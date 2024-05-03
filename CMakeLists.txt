@@ -6,8 +6,8 @@ set(CMAKE_C_STANDARD 11)
 SET(CMAKE_CXX_LINK_EXECUTABLE g++)
 SET(CMAKE_CXX_COMPILER g++)
 
-add_executable(IB109 main.c)
+file(GLOB LIBS "./*.c")
 
+add_executable(queue main.c ${LIBS})
 
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g -Wall")
