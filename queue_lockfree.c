@@ -1,24 +1,26 @@
 #include "types.h"
+
 #ifdef LOCKFREE
+
 #include "queue_lockfree.h"
 #include "stdatomic.h"
 #include "pthread.h"
 
 int queue_init(queue_t **queue_ptr) {
-    void *new_queue = calloc(sizeof (queue_t) + sizeof (node_t), 1);
+    void *new_queue = calloc(sizeof(queue_t) + sizeof(node_t), 1);
     if (new_queue == NULL) {
         return -1;
     }
     *queue_ptr = new_queue;
 
-    (*queue_ptr)->head = new_queue + sizeof (queue_t);
+    (*queue_ptr)->head = new_queue + sizeof(queue_t);
     (*queue_ptr)->tail = (*queue_ptr)->head;
 
     return 0;
 }
 
-int queue_push(queue_t *queue, void* obj) {
-    node_t *new_node = calloc(sizeof (node_t), 1);
+int queue_push(queue_t *queue, void *obj) {
+    node_t *new_node = calloc(sizeof(node_t), 1);
     if (new_node == NULL) {
         return -1;
     }
@@ -26,13 +28,24 @@ int queue_push(queue_t *queue, void* obj) {
 
     node_t *tail_node;
 
-    do {
+    while (true) {
         tail_node = queue->tail;
-    } while (!__sync_bool_compare_and_swap(&(tail_node->next), NULL, new_node));
 
-    // todo compare exchange
-    queue->tail->next = new_node;
-    queue->tail = new_node;
+        if (__sync_bool_compare_and_swap(&(queue->tail), tail_node,
+                                             new_node)) {
+            if (__sync_bool_compare_and_swap(&(tail_node->next), NULL, new_node)) {
+                break;
+            }
+        }
+
+    }
+
+//    do {
+//        tail_node = queue->tail;
+//    } while (!__sync_bool_compare_and_swap(&(tail_node->next), NULL, new_node));
+//
+//    // todo compare exchange
+//    queue->tail = new_node;
 
     return 0;
 }
@@ -48,13 +61,16 @@ int queue_pop(queue_t *queue, void **poped) {
 
         old_node = dummy_node->next;
 
-        if (__sync_bool_compare_and_swap(&(dummy_node->next), old_node, old_node->next)) {
-            if (old_node->next != NULL) {
-                break;
+        if (old_node->next == NULL) {
+            if (!__sync_bool_compare_and_swap(&(queue->tail), old_node,
+                                              dummy_node)) {
+                continue;
             }
-            if (__sync_bool_compare_and_swap(&(queue->tail), old_node, dummy_node)) {
-                break;
-            }
+        }
+
+        if (__sync_bool_compare_and_swap(&(dummy_node->next), old_node,
+                                         old_node->next)) {
+            break;
         }
     }
 
@@ -88,7 +104,7 @@ void queue_print(queue_t *queue) {
     printf("Queue at %p:", queue);
 
     while (act_node != NULL) {
-        printf(" <- %d", *((int*) act_node->obj));
+        printf(" <- %d", *((int *) act_node->obj));
         act_node = act_node->next;
     }
     printf("\n");
@@ -105,4 +121,5 @@ unsigned long long queue_size(queue_t *queue) {
 
     return count;
 }
+
 #endif
