@@ -38,19 +38,25 @@ int queue_push(queue_t *queue, void* obj) {
 }
 
 int queue_pop(queue_t *queue, void **poped) {
-    node_t *dummy_node;
+    node_t *dummy_node = queue->head;
     node_t *old_node;
 
-    do {
-        if (queue->head->next == queue->tail) {  //dummy element
-        return 1;
+    while (true) {
+        if (queue->head == queue->tail) {  //dummy element
+            return 1;
         }
 
-        dummy_node = queue->head;
         old_node = dummy_node->next;
-    } while (!__sync_bool_compare_and_swap(&(dummy_node->next), old_node, old_node->next));
 
-    // todo edit dummy node
+        if (__sync_bool_compare_and_swap(&(dummy_node->next), old_node, old_node->next)) {
+            if (old_node->next != NULL) {
+                break;
+            }
+            if (__sync_bool_compare_and_swap(&(queue->tail), old_node, dummy_node)) {
+                break;
+            }
+        }
+    }
 
     if (poped != NULL) {
         *poped = old_node->obj;
@@ -62,11 +68,11 @@ int queue_pop(queue_t *queue, void **poped) {
 }
 
 bool queue_is_empty(queue_t *queue) {
-    return (queue->head == queue->tail) && (queue->tail != NULL);
+    return (queue->head == queue->tail);
 }
 
 int queue_destroy(queue_t **queue_ptr) {
-    while ((*queue_ptr)->head != (*queue_ptr)->tail) {
+    while (!queue_is_empty(*queue_ptr)) {
         queue_pop(*queue_ptr, NULL);
     }
     free(*queue_ptr);
