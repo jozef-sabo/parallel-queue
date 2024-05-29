@@ -1,5 +1,3 @@
-#include "types.h"
-
 #ifdef LOCKFREE
 
 #include "queue_lockfree.h"
@@ -7,14 +5,20 @@
 #include "pthread.h"
 
 int queue_init(queue_t **queue_ptr) {
-    void *new_queue = calloc(sizeof(queue_t) + sizeof(node_t), 1);
+    queue_t *new_queue = calloc(sizeof(queue_t), 1);
     if (new_queue == NULL) {
         return -1;
     }
-    *queue_ptr = new_queue;
 
-    (*queue_ptr)->head = new_queue + sizeof(queue_t);
-    (*queue_ptr)->tail = (*queue_ptr)->head;
+    void *dummy_element = calloc(sizeof(node_t), 1);
+    if (dummy_element == NULL) {
+        free(new_queue);
+        return -1;
+    }
+
+    *queue_ptr = new_queue;
+    new_queue->head = dummy_element;
+    new_queue->tail = new_queue->head;
 
     return 0;
 }
@@ -40,45 +44,32 @@ int queue_push(queue_t *queue, void *obj) {
 
     }
 
-//    do {
-//        tail_node = queue->tail;
-//    } while (!__sync_bool_compare_and_swap(&(tail_node->next), NULL, new_node));
-//
-//    // todo compare exchange
-//    queue->tail = new_node;
-
     return 0;
 }
 
 int queue_pop(queue_t *queue, void **poped) {
-    node_t *dummy_node = queue->head;
+    node_t *dummy_node;
     node_t *old_node;
+    void *content;
 
     while (true) {
+        dummy_node = queue->head;
+        old_node = dummy_node->next;
         if (queue->head == queue->tail) {  //dummy element
             return 1;
         }
 
-        old_node = dummy_node->next;
-
-        if (old_node->next == NULL) {
-            if (!__sync_bool_compare_and_swap(&(queue->tail), old_node,
-                                              dummy_node)) {
-                continue;
-            }
-        }
-
-        if (__sync_bool_compare_and_swap(&(dummy_node->next), old_node,
-                                         old_node->next)) {
+        if (__sync_bool_compare_and_swap(&(queue->head), dummy_node, old_node)) {
+            content = old_node->obj;
             break;
         }
     }
 
     if (poped != NULL) {
-        *poped = old_node->obj;
+        *poped = content;
     }
 
-    free(old_node);
+    free(dummy_node);
 
     return 0;
 }
@@ -91,6 +82,7 @@ int queue_destroy(queue_t **queue_ptr) {
     while (!queue_is_empty(*queue_ptr)) {
         queue_pop(*queue_ptr, NULL);
     }
+    free((*queue_ptr)->head);
     free(*queue_ptr);
     *queue_ptr = NULL;
 
